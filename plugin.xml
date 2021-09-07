@@ -16,7 +16,7 @@
     <engine name="cordova-ios" version=">=4.5.0"/>
   </engines>
   <platform name="android">
-    <dependency id="cordova-plugin-appboy" url="https://github.com/qustodio/appboy-cordova-sdk#a9212b7d9d11c86569402f8db455a6199faa61b3" />
+    <dependency id="cordova-plugin-appboy" url="https://github.com/qustodio/appboy-cordova-sdk#a98f43875c6bb590bd0b94bcee641bbbfdee98ac" />
     <config-file target="res/xml/config.xml" parent="/*">
       <feature name="PushNotification">
         <param name="android-package" value="com.adobe.phonegap.push.PushPlugin"/>
@@ -44,7 +44,7 @@
       </service>
     </config-file>
     <preference name="ANDROID_SUPPORT_V13_VERSION" default="27.+"/>
-    <preference name="FCM_VERSION" default="17.0.+"/>
+    <preference name="FCM_VERSION" default="22.0.+"/>
     <framework src="com.android.support:support-v13:$ANDROID_SUPPORT_V13_VERSION"/>
     <framework src="me.leolin:ShortcutBadger:1.1.17@aar"/>
     <framework src="com.google.firebase:firebase-messaging:$FCM_VERSION"/>

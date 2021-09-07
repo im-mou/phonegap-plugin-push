@@ -12,12 +12,17 @@ import android.media.AudioAttributes;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.support.v4.app.NotificationCompat;
-import android.support.v4.app.NotificationManagerCompat;
+import androidx.core.app.NotificationCompat;
+import androidx.core.app.NotificationManagerCompat;
 import android.util.Log;
 
-import com.google.firebase.iid.FirebaseInstanceId;
+import androidx.annotation.NonNull;
+
+import com.google.firebase.installations.FirebaseInstallations;
 import com.google.firebase.messaging.FirebaseMessaging;
+
+import com.google.android.gms.tasks.Task;
+import com.google.android.gms.tasks.OnCompleteListener;
 
 import org.apache.cordova.CallbackContext;
 import org.apache.cordova.CordovaInterface;
@@ -199,38 +204,50 @@ public class PushPlugin extends CordovaPlugin implements PushConstants {
             Log.v(LOG_TAG, "execute: senderID=" + senderID);
 
             try {
-              token = FirebaseInstanceId.getInstance().getToken();
+              JSONObject finalJo = jo;
+              FirebaseMessaging.getInstance().getToken().addOnCompleteListener(new OnCompleteListener<String>() {
+                @Override
+                public void onComplete(@NonNull Task<String> task) {
+                  if (!task.isSuccessful()) {
+                    Log.w(LOG_TAG, "Fetching FCM registration token failed", task.getException());
+                    return;
+                  }
+
+                  // Get new FCM registration token
+                  String token = task.getResult();
+
+                  if (!"".equals(token)) {
+                    JSONObject json = null;
+                    try {
+                      json = new JSONObject().put(REGISTRATION_ID, token);
+                    } catch (JSONException e) {
+                      e.printStackTrace();
+                    }
+                    try {
+                      json.put(REGISTRATION_TYPE, FCM);
+                    } catch (JSONException e) {
+                      e.printStackTrace();
+                    }
+
+                    Log.v(LOG_TAG, "onRegistered: " + json.toString());
+
+                    JSONArray topics = finalJo.optJSONArray(TOPICS);
+                    subscribeToTopics(topics, registration_id);
+
+                    PushPlugin.sendEvent(json);
+                  } else {
+                    callbackContext.error("Empty registration ID received from FCM");
+                    return;
+                  }
+                }
+            });
             } catch (IllegalStateException e) {
               Log.e(LOG_TAG, "Exception raised while getting Firebase token " + e.getMessage());
             }
 
-            if (token == null) {
-              try {
-                token = FirebaseInstanceId.getInstance().getToken(senderID, FCM);
-              } catch (IllegalStateException e) {
-                Log.e(LOG_TAG, "Exception raised while getting Firebase token " + e.getMessage());
-              }
-            }
 
-            if (!"".equals(token)) {
-              JSONObject json = new JSONObject().put(REGISTRATION_ID, token);
-              json.put(REGISTRATION_TYPE, FCM);
-
-              Log.v(LOG_TAG, "onRegistered: " + json.toString());
-
-              JSONArray topics = jo.optJSONArray(TOPICS);
-              subscribeToTopics(topics, registration_id);
-
-              PushPlugin.sendEvent(json);
-            } else {
-              callbackContext.error("Empty registration ID received from FCM");
-              return;
-            }
           } catch (JSONException e) {
             Log.e(LOG_TAG, "execute: Got JSON Exception " + e.getMessage());
-            callbackContext.error(e.getMessage());
-          } catch (IOException e) {
-            Log.e(LOG_TAG, "execute: Got IO Exception " + e.getMessage());
             callbackContext.error(e.getMessage());
           } catch (Resources.NotFoundException e) {
 
@@ -283,32 +300,28 @@ public class PushPlugin extends CordovaPlugin implements PushConstants {
     } else if (UNREGISTER.equals(action)) {
       cordova.getThreadPool().execute(new Runnable() {
         public void run() {
-          try {
-            SharedPreferences sharedPref = getApplicationContext().getSharedPreferences(COM_ADOBE_PHONEGAP_PUSH,
-                Context.MODE_PRIVATE);
-            JSONArray topics = data.optJSONArray(0);
-            if (topics != null && !"".equals(registration_id)) {
-              unsubscribeFromTopics(topics, registration_id);
-            } else {
-              FirebaseInstanceId.getInstance().deleteInstanceId();
-              Log.v(LOG_TAG, "UNREGISTER");
+          SharedPreferences sharedPref = getApplicationContext().getSharedPreferences(COM_ADOBE_PHONEGAP_PUSH,
+              Context.MODE_PRIVATE);
+          JSONArray topics = data.optJSONArray(0);
+          if (topics != null && !"".equals(registration_id)) {
+            unsubscribeFromTopics(topics, registration_id);
+          } else {
+            FirebaseMessaging.getInstance().deleteToken();
+            FirebaseInstallations.getInstance().delete();
+            Log.v(LOG_TAG, "UNREGISTER");
 
-              // Remove shared prefs
-              SharedPreferences.Editor editor = sharedPref.edit();
-              editor.remove(SOUND);
-              editor.remove(VIBRATE);
-              editor.remove(CLEAR_BADGE);
-              editor.remove(CLEAR_NOTIFICATIONS);
-              editor.remove(FORCE_SHOW);
-              editor.remove(SENDER_ID);
-              editor.commit();
-            }
-
-            callbackContext.success();
-          } catch (IOException e) {
-            Log.e(LOG_TAG, "execute: Got JSON Exception " + e.getMessage());
-            callbackContext.error(e.getMessage());
+            // Remove shared prefs
+            SharedPreferences.Editor editor = sharedPref.edit();
+            editor.remove(SOUND);
+            editor.remove(VIBRATE);
+            editor.remove(CLEAR_BADGE);
+            editor.remove(CLEAR_NOTIFICATIONS);
+            editor.remove(FORCE_SHOW);
+            editor.remove(SENDER_ID);
+            editor.commit();
           }
+
+          callbackContext.success();
         }
       });
     } else if (FINISH.equals(action)) {
