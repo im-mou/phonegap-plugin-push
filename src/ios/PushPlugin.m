@@ -1,16 +1,12 @@
 /*
  Copyright 2009-2011 Urban Airship Inc. All rights reserved.
-
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions are met:
-
  1. Redistributions of source code must retain the above copyright notice, this
  list of conditions and the following disclaimer.
-
  2. Redistributions in binaryform must reproduce the above copyright notice,
  this list of conditions and the following disclaimer in the documentation
  and/or other materials provided withthe distribution.
-
  THIS SOFTWARE IS PROVIDED BY THE URBAN AIRSHIP INC``AS IS'' AND ANY EXPRESS OR
  IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
  MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO
@@ -90,7 +86,7 @@
             NSArray* topics = [iosOptions objectForKey:@"topics"];
             [self setFcmTopics:topics];
 
-            UNAuthorizationOptions authorizationOptions = UNAuthorizationOptionNone;
+            UIUserNotificationType UserNotificationTypes = UIUserNotificationTypeNone;
 
             id badgeArg = [iosOptions objectForKey:@"badge"];
             id soundArg = [iosOptions objectForKey:@"sound"];
@@ -99,96 +95,47 @@
 
             if (([badgeArg isKindOfClass:[NSString class]] && [badgeArg isEqualToString:@"true"]) || [badgeArg boolValue])
             {
-                authorizationOptions |= UNAuthorizationOptionBadge;
+                UserNotificationTypes |= UIUserNotificationTypeBadge;
             }
 
             if (([soundArg isKindOfClass:[NSString class]] && [soundArg isEqualToString:@"true"]) || [soundArg boolValue])
             {
-                authorizationOptions |= UNAuthorizationOptionSound;
+                UserNotificationTypes |= UIUserNotificationTypeSound;
             }
 
             if (([alertArg isKindOfClass:[NSString class]] && [alertArg isEqualToString:@"true"]) || [alertArg boolValue])
             {
-                authorizationOptions |= UNAuthorizationOptionAlert;
+                UserNotificationTypes |= UIUserNotificationTypeAlert;
             }
+
+            UserNotificationTypes |= UIUserNotificationActivationModeBackground;
 
             if (clearBadgeArg == nil || ([clearBadgeArg isKindOfClass:[NSString class]] && [clearBadgeArg isEqualToString:@"false"]) || ![clearBadgeArg boolValue]) {
                 NSLog(@"PushPlugin.register: setting badge to false");
-                clearBadge = NO;
+                self->clearBadge = NO;
             } else {
                 NSLog(@"PushPlugin.register: setting badge to true");
-                clearBadge = YES;
+                self->clearBadge = YES;
                 [[UIApplication sharedApplication] setApplicationIconBadgeNumber:0];
             }
-            NSLog(@"PushPlugin.register: clear badge is set to %d", clearBadge);
+            NSLog(@"PushPlugin.register: clear badge is set to %d", self->clearBadge);
 
-            isInline = NO;
+            self->isInline = NO;
 
-            NSLog(@"PushPlugin.register: better button setup");
-            // setup action buttons
-            NSMutableSet<UNNotificationCategory *> *categories = [[NSMutableSet alloc] init];
-            id categoryOptions = [iosOptions objectForKey:@"categories"];
-            if (categoryOptions != nil && [categoryOptions isKindOfClass:[NSDictionary class]]) {
-                for (id key in categoryOptions) {
-                    NSLog(@"categories: key %@", key);
-                    id category = [categoryOptions objectForKey:key];
-
-                    id yesButton = [category objectForKey:@"yes"];
-                    UNNotificationAction *yesAction;
-                    if (yesButton != nil && [yesButton  isKindOfClass:[NSDictionary class]]) {
-                        yesAction = [self createAction: yesButton];
-                    }
-                    id noButton = [category objectForKey:@"no"];
-                    UNNotificationAction *noAction;
-                    if (noButton != nil && [noButton  isKindOfClass:[NSDictionary class]]) {
-                        noAction = [self createAction: noButton];
-                    }
-                    id maybeButton = [category objectForKey:@"maybe"];
-                    UNNotificationAction *maybeAction;
-                    if (maybeButton != nil && [maybeButton  isKindOfClass:[NSDictionary class]]) {
-                        maybeAction = [self createAction: maybeButton];
-                    }
-
-                    // Identifier to include in your push payload and local notification
-                    NSString *identifier = key;
-
-                    NSMutableArray<UNNotificationAction *> *actions = [[NSMutableArray alloc] init];
-                    if (yesButton != nil) {
-                        [actions addObject:yesAction];
-                    }
-                    if (noButton != nil) {
-                        [actions addObject:noAction];
-                    }
-                    if (maybeButton != nil) {
-                        [actions addObject:maybeAction];
-                    }
-
-                    UNNotificationCategory *notificationCategory = [UNNotificationCategory categoryWithIdentifier:identifier
-                                                                                                          actions:actions
-                                                                                                intentIdentifiers:@[]
-                                                                                                          options:UNNotificationCategoryOptionNone];
-
-                    NSLog(@"Adding category %@", key);
-                    [categories addObject:notificationCategory];
-                }
-
+            if ([[UIApplication sharedApplication]respondsToSelector:@selector(registerUserNotificationSettings:)]) {
+                UIUserNotificationSettings *settings = [UIUserNotificationSettings settingsForTypes:UserNotificationTypes categories:nil];
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [[UIApplication sharedApplication] registerUserNotificationSettings:settings];
+                    [[UIApplication sharedApplication] registerForRemoteNotifications];
+                });
             }
-
-            UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
-            [center setNotificationCategories:categories];
-            [self handleNotificationSettingsWithAuthorizationOptions:[NSNumber numberWithInteger:authorizationOptions]];
-
-            [[NSNotificationCenter defaultCenter] addObserver:self
-                                                     selector:@selector(handleNotificationSettings:)
-                                                         name:pushPluginApplicationDidBecomeActiveNotification
-                                                       object:nil];
 
             NSLog(@"Using APNS Notification");
             [self setUsesFCM:NO];
             NSLog(@"Using FCM Sandbox NO");
             [self setFcmSandbox:@NO];
 
-            if (notificationMessage) {            // if there is a pending startup notification
+            if (self->notificationMessage) {            // if there is a pending startup notification
                 dispatch_async(dispatch_get_main_queue(), ^{
                     // delay to allow JS event handlers to be setup
                     [self performSelector:@selector(notificationReceived) withObject:nil afterDelay: 0.5];
